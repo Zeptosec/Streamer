@@ -6,16 +6,8 @@ import { getStreamBuffer } from './manager.js';
 const fileLimit = 8 * 1024 ** 2;
 const chunkSize = 2 * 1024 ** 2;
 
-app.get("/test/:id", async function (req, res) {
-    try {
-        const { id } = req.params;
-        const rs = await getStreamBuffer(id, 1);
-        console.log(rs);
-    } catch (err) {
-        console.log(err.message);
-    }
-    return res.status(200).json({ ares: "done" });
-
+app.get("/", function (req, res) {
+    res.status(200).send("alive");
 })
 
 app.get("/stream/:id", async function (req, res) {
