@@ -3,9 +3,6 @@ const app = express();
 import stream from 'stream';
 import { getStreamBuffer } from './manager.js';
 
-const fileLimit = 8 * 1024 ** 2 - 192;
-const chunkSize = 2 * 1024 ** 2 - 48;
-
 app.get("/", function (req, res) {
     res.status(200).send("alive");
 })
@@ -31,7 +28,8 @@ app.get("/stream/:id", async function (req, res) {
             return res.status(200);
         const data = await getStreamBuffer(id, start);
         if (!data.buffer || !data.streamSize) return res.status(500).json({ error: "Could not get stream buffer" });
-
+        const chunkSize = data.chunkSize / 4;
+        const fileLimit = data.chunkSize;
         const CHUNK_SIZE = Math.min(chunkSize, fileLimit - start % fileLimit - 1);
         const end = Math.min(start + CHUNK_SIZE, data.streamSize - 1);
         const contentLength = end - start + 1;
