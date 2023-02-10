@@ -3,8 +3,8 @@ const app = express();
 import stream from 'stream';
 import { getStreamBuffer } from './manager.js';
 
-const fileLimit = 8 * 1024 ** 2;
-const chunkSize = 2 * 1024 ** 2;
+const fileLimit = 8 * 1024 ** 2 - 192;
+const chunkSize = 2 * 1024 ** 2 - 48;
 
 app.get("/", function (req, res) {
     res.status(200).send("alive");

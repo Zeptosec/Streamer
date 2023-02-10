@@ -8,7 +8,7 @@ const maxQueueSize = 6; // queue size this is expensive. one item in queue is 8M
 // ------------------------------
 const linkStart = process.env.LINKSTART;
 const streamsInfo = new Map();
-const chunkSize = 8 * 1024 ** 2;
+const chunkSize = 8 * 1024 ** 2 - 192;
 
 async function getStreamInfo(id) {
     if (streamsInfo.has(id)) {
