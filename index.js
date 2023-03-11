@@ -30,7 +30,7 @@ app.get("/stream/:cid/:fid", async function (req, res) {
             return res.status(200);
         const data = await getStreamBuffer(fid, cid, start);
         if (data === null || !data.buffer || !data.streamSize) return res.status(500).json({ error: "Could not get stream buffer" });
-        const chunkSize = data.chunkSize / 4;
+        const chunkSize = process.env.CHUNKSIZE || (data.chunkSize / 4);
         const fileLimit = data.chunkSize;
 
         const CHUNK_SIZE = Math.min(chunkSize, fileLimit - start % fileLimit - 1);
