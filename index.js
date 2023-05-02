@@ -1,7 +1,7 @@
 import express from 'express';
 const app = express();
 import stream from 'stream';
-import { getStreamBufferPart, sendBufferSize } from './manager.js';
+import { getStreamBufferPart } from './manager.js';
 
 const timestamp = new Date();
 app.get("/", function (req, res) {
@@ -32,9 +32,12 @@ app.get("/stream/:cid/:fid", async function (req, res) {
         await new Promise(r => setTimeout(r, 50)); // accounting for sliding of video or audio
         if (canceled)
             return res.status(200);
-        const data = await getStreamBufferPart(fid, cid, start, sendBufferSize);
+        const data = await getStreamBufferPart(fid, cid, start);
 
-        if (!data) return res.status(500).json({ error: "Could not get stream buffer. Check server logs." });
+        if (!data) {
+            console.log(`stream buffer not found!`)
+            return res.status(500).send( "Could not get stream buffer" );
+        }
         const end = start + data.length
         const contentLength = end - start;
         // i guess i dont need content type
@@ -53,7 +56,7 @@ app.get("/stream/:cid/:fid", async function (req, res) {
         bufferStream.pipe(res)
     } catch (err) {
         console.log(err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json(err.message);
     }
 })
 

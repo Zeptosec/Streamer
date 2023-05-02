@@ -20,6 +20,7 @@ async function getStreamInfo(fid, cid) {
             const res = await axios.get(`${linkStart}/${cid}/${fid}/blob`);
             if (!res.data.chunks || !res.data.size) return null;
             if (!res.data.chunkSize) res.data.chunkSize = oldChunkSize;
+
             streamsInfo.set(fid, res.data);
             if (streamsInfo.size > maxStreamInfoSize) {
                 streamsInfo.delete(streamsInfo.keys().next().value);
@@ -32,13 +33,13 @@ async function getStreamInfo(fid, cid) {
     }
 }
 
-export async function getStreamBufferPart(fid, cid, start, CHUNK_SIZE) {
+export async function getStreamBufferPart(fid, cid, start, bufferSize=sendBufferSize) {
     const packet = await getStreamBuffer(fid, cid, start);
     if (!packet) return null;
     const offsetBytes = start - packet.start;
-    const maxChunkSize = Math.min(packet.buffer.length - offsetBytes, CHUNK_SIZE);
+    const maxChunkSize = Math.min(packet.buffer.length - offsetBytes, bufferSize);
     const sliced = packet.buffer.slice(offsetBytes, offsetBytes + maxChunkSize);
-    
+    //console.log(`off: ${offsetBytes} | max: ${maxChunkSize} | slc: ${sliced.length}`);
     return {
         buffer: sliced,
         streamSize: packet.streamSize,
@@ -54,13 +55,12 @@ export async function getStreamBuffer(fid, cid, start) {
         AddToQueue(fid, cid, streamInfo, start + buffSize);
     }
     const item = await getFromQueue(fid, start);
-    if (item === undefined) return null;
+    if (!item) return null;
 
     return {
         buffer: item.buffer,
         start: item.start,
-        streamSize: streamInfo.size,
-        chunkSize: item.length
+        streamSize: streamInfo.size
     };
 }
 
@@ -83,7 +83,7 @@ async function getDownloadBuffer(cid, streamInfo, start, controller) {
             headers: {
                 Range: `bytes=${markerAtChunk}-${endByte - 1}`
             }
-        }).then(rs => rs.data).catch(err => { console.log(start, endByte, streamInfo.chunkSize, chunkIndex, err.response.statusText, err.stack, 1); return undefined; })
+        }).then(rs => rs.data).catch(err => { console.log(start, endByte, streamInfo.chunkSize, chunkIndex, err.stack, 1); return undefined; })
     )
 
     if (chunkIndex + 1 < streamInfo.chunks.length && diff > 0) {
@@ -94,7 +94,7 @@ async function getDownloadBuffer(cid, streamInfo, start, controller) {
                 headers: {
                     Range: `bytes=${0}-${diff - 1}`
                 }
-            }).then(rs => rs.data).catch(err => { console.log(err.response.statusText, err.stack, 2); return undefined; })
+            }).then(rs => rs.data).catch(err => { console.log(err.stack, 2); return undefined; })
         )
     }
     const buffs = await Promise.all(arr);
@@ -104,20 +104,18 @@ async function getDownloadBuffer(cid, streamInfo, start, controller) {
 
 let Queue = [];
 function AddToQueue(fid, cid, streamInfo, start) {
-    const index = Math.floor(start / buffSize);
-    const item = Queue.find(w => w.fid === fid && w.index === index);
+    const item = Queue.find(w => w.fid === fid && w.start <= start && w.end - sendBufferSize > start);
     if (item) return;
     const controller = new AbortController();
     const buffer = getDownloadBuffer(cid, streamInfo, start, controller);
-    Queue.unshift({ fid, index, buffer, controller, start });
+    Queue.unshift({ fid, buffer, controller, start, end: Math.min(streamInfo.size, start + buffSize) });
     if (Queue.length > maxQueueSize) {
         Queue.pop().controller.abort();
     }
 }
 
-async function getFromQueue(id, start) {
-    const index = Math.floor(start / buffSize);
-    const item = Queue.find(w => w.fid === id && w.index === index);
+async function getFromQueue(fid, start) {
+    const item = Queue.find(w => w.fid === fid && w.start <= start && w.end > start);
     if (!item) return null;
     const buffer = await item.buffer;
     return { buffer, start: item.start };
