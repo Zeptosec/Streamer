@@ -3,10 +3,12 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 // --------- CONFIG -------------
-const maxStreamInfoSize = 20; // max amount of streamsInfo. This does not take much space so this can be fairly high.
-const maxQueueSize = 6; // queue size this is expensive. one item in queue is 8MB. Be careful not to run out of memory.
-// ------------------------------
+const maxStreamInfoSize = process.env.MAX_STREAM_INFO_SIZE ? process.env.MAX_STREAM_INFO_SIZE : 20; // max amount of streamsInfo. This does not take much space so this can be fairly high.
+const maxQueueSize = process.env.MAX_QUEUE_SIZE ? process.env.MAX_QUEUE_SIZE : 6; // queue size this is expensive. one item in queue is 8MB. Be careful not to run out of memory.
+const buffSize = process.env.HOLD_BUFFER_SIZE ? process.env.HOLD_BUFFER_SIZE : 6.25 * 1024 ** 2;
+export const sendBufferSize = process.env.SEND_BUFFER_SIZE ? process.env.SEND_BUFFER_SIZE : 1.5625 * 1024 ** 2;
 const linkStart = process.env.LINKSTART;
+// ------------------------------
 const streamsInfo = new Map();
 const oldChunkSize = 8 * 1024 ** 2;
 
@@ -17,6 +19,7 @@ async function getStreamInfo(fid, cid) {
         try {
             const res = await axios.get(`${linkStart}/${cid}/${fid}/blob`);
             if (!res.data.chunks || !res.data.size) return null;
+            if (!res.data.chunkSize) res.data.chunkSize = oldChunkSize;
             streamsInfo.set(fid, res.data);
             if (streamsInfo.size > maxStreamInfoSize) {
                 streamsInfo.delete(streamsInfo.keys().next().value);
@@ -29,43 +32,93 @@ async function getStreamInfo(fid, cid) {
     }
 }
 
-export async function getStreamBuffer(fid, cid, start) {
-    const streamInfo = await getStreamInfo(fid, cid);
-    let chunkSize = streamInfo.chunkSize ? streamInfo.chunkSize : oldChunkSize;
-    if (streamInfo === null) return null;
-    if (start < 0) return null;
-    const index = Math.floor(start / chunkSize);
-    if (index >= streamInfo.chunks.length) return null;
-    AddToQueue(fid, cid, index, streamInfo);
-    if (index + 1 < streamInfo.chunks.length) // buffer up more stream
-        AddToQueue(fid, cid, index + 1, streamInfo);
-    const item = await getFromQueue(fid, index);
-    if(item === undefined) return null;
+export async function getStreamBufferPart(fid, cid, start, CHUNK_SIZE) {
+    const packet = await getStreamBuffer(fid, cid, start);
+    if (!packet) return null;
+    const offsetBytes = start - packet.start;
+    const maxChunkSize = Math.min(packet.buffer.length - offsetBytes, CHUNK_SIZE);
+    const sliced = packet.buffer.slice(offsetBytes, offsetBytes + maxChunkSize);
+    
     return {
-        buffer: item.data,
-        streamSize: streamInfo.size,
-        chunkSize
+        buffer: sliced,
+        streamSize: packet.streamSize,
+        length: sliced.length
     };
 }
 
+export async function getStreamBuffer(fid, cid, start) {
+    const streamInfo = await getStreamInfo(fid, cid);
+    if (streamInfo === null || start < 0 || start > streamInfo.size) return null;
+    AddToQueue(fid, cid, streamInfo, start);
+    if (start + buffSize < streamInfo.size) { // buffer up more stream
+        AddToQueue(fid, cid, streamInfo, start + buffSize);
+    }
+    const item = await getFromQueue(fid, start);
+    if (item === undefined) return null;
+
+    return {
+        buffer: item.buffer,
+        start: item.start,
+        streamSize: streamInfo.size,
+        chunkSize: item.length
+    };
+}
+
+async function getDownloadBuffer(cid, streamInfo, start, controller) {
+    let arr = []
+    const markerAtChunk = start % streamInfo.chunkSize;
+    const chunkIndex = Math.floor(start / streamInfo.chunkSize);
+    const allowedBuffSize = Math.min(buffSize, streamInfo.size - start)
+    let endByte = markerAtChunk + allowedBuffSize;
+    let diff = 0;
+    if (endByte > streamInfo.chunkSize) {
+        diff = endByte - streamInfo.chunkSize;
+        endByte -= diff;
+    }
+    //console.log(`${chunkIndex} | start: ${start}; max: ${streamInfo.size}; diff: ${diff}; abuff: ${allowedBuffSize}; ${markerAtChunk} - ${endByte}`)
+    arr.push(
+        axios.get(`${linkStart}/${cid}/${streamInfo.chunks[chunkIndex]}/blob`, {
+            responseType: 'arraybuffer',
+            signal: controller.signal,
+            headers: {
+                Range: `bytes=${markerAtChunk}-${endByte - 1}`
+            }
+        }).then(rs => rs.data).catch(err => { console.log(start, endByte, streamInfo.chunkSize, chunkIndex, err.response.statusText, err.stack, 1); return undefined; })
+    )
+
+    if (chunkIndex + 1 < streamInfo.chunks.length && diff > 0) {
+        arr.push(
+            axios.get(`${linkStart}/${cid}/${streamInfo.chunks[chunkIndex + 1]}/blob`, {
+                responseType: 'arraybuffer',
+                signal: controller.signal,
+                headers: {
+                    Range: `bytes=${0}-${diff - 1}`
+                }
+            }).then(rs => rs.data).catch(err => { console.log(err.response.statusText, err.stack, 2); return undefined; })
+        )
+    }
+    const buffs = await Promise.all(arr);
+    if (buffs.includes(undefined)) return null;
+    return Buffer.concat(buffs);
+}
+
 let Queue = [];
-function AddToQueue(fid, cid, index, streamInfo) {
-    const item = Queue.find(w => w.id === fid && w.index === index);
+function AddToQueue(fid, cid, streamInfo, start) {
+    const index = Math.floor(start / buffSize);
+    const item = Queue.find(w => w.fid === fid && w.index === index);
     if (item) return;
     const controller = new AbortController();
-    const buffer = axios.get(`${linkStart}/${cid}/${streamInfo.chunks[index]}/blob`, {
-        responseType: 'arraybuffer',
-        signal: controller.signal
-    }).catch(err => { console.log("canceled"); });
-    Queue.unshift({ fid, index, buffer, controller });
+    const buffer = getDownloadBuffer(cid, streamInfo, start, controller);
+    Queue.unshift({ fid, index, buffer, controller, start });
     if (Queue.length > maxQueueSize) {
         Queue.pop().controller.abort();
     }
 }
 
-async function getFromQueue(id, index) {
+async function getFromQueue(id, start) {
+    const index = Math.floor(start / buffSize);
     const item = Queue.find(w => w.fid === id && w.index === index);
     if (!item) return null;
     const buffer = await item.buffer;
-    return buffer;
+    return { buffer, start: item.start };
 }

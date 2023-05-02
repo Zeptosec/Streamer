@@ -1,16 +1,20 @@
 import express from 'express';
 const app = express();
 import stream from 'stream';
-import { getStreamBuffer } from './manager.js';
+import { getStreamBufferPart, sendBufferSize } from './manager.js';
 
+const timestamp = new Date();
 app.get("/", function (req, res) {
-    res.status(200).send("alive");
+    const timediff = new Date().getTime() - timestamp.getTime();
+    const days = Math.floor(timediff / 1000 / 3600 / 24);
+    const hours = Math.floor(timediff / 100 / 3600) / 10;
+    res.status(200).send(`alive for ${days} days and ${hours} hours. Total ${timediff} mills`);
 })
 
 app.get("/stream/:cid/:fid", async function (req, res) {
     const range = req.headers.range;
     const { fid, cid } = req.params;
-    if(cid.length !== 19 || fid.length !== 19){
+    if (cid.length !== 19 || fid.length !== 19) {
         return res.status(400).send("Ids are not valid.");
     }
     if (!cid || !fid) {
@@ -28,30 +32,24 @@ app.get("/stream/:cid/:fid", async function (req, res) {
         await new Promise(r => setTimeout(r, 50)); // accounting for sliding of video or audio
         if (canceled)
             return res.status(200);
-        const data = await getStreamBuffer(fid, cid, start);
-        if (data === null || !data.buffer || !data.streamSize) return res.status(500).json({ error: "Could not get stream buffer" });
-        const chunkSize = process.env.CHUNKSIZE || (data.chunkSize / 4);
-        const fileLimit = data.chunkSize;
+        const data = await getStreamBufferPart(fid, cid, start, sendBufferSize);
 
-        const CHUNK_SIZE = Math.min(chunkSize, fileLimit - start % fileLimit - 1);
-        const end = Math.min(start + CHUNK_SIZE, data.streamSize - 1);
-        const contentLength = end - start + 1;
+        if (!data) return res.status(500).json({ error: "Could not get stream buffer. Check server logs." });
+        const end = start + data.length
+        const contentLength = end - start;
         // i guess i dont need content type
         // const type = req.headers['sec-fetch-dest'] === 'audio' ? 'audio/mp3' : 'video/mp4';
+
         const headers = {
-            "Content-Range": `bytes ${start}-${end}/${data.streamSize}`,
+            "Content-Range": `bytes ${start}-${end - 1}/${data.streamSize}`,
             "Accept-Ranges": "bytes",
             "Content-Length": contentLength,
             // "Content-Type": type,
             "Access-Control-Allow-Origin": "*"
         };
         res.writeHead(206, headers);
-
-        const fend = end % fileLimit == 0 ? start % fileLimit + CHUNK_SIZE : end % fileLimit + 1;
-        const sliced = data.buffer.slice(start % fileLimit, fend);
-
         var bufferStream = new stream.PassThrough();
-        bufferStream.end(sliced);
+        bufferStream.end(data.buffer);
         bufferStream.pipe(res)
     } catch (err) {
         console.log(err);
