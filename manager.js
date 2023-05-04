@@ -35,12 +35,12 @@ async function getStreamInfo(fid, cid) {
 
 export async function getStreamBufferPart(fid, cid, start, bufferSize=sendBufferSize) {
     const packet = await getStreamBuffer(fid, cid, start);
-    console.log(packet)
+    //console.log(packet)
     if (!packet) return null;
     const offsetBytes = start - packet.start;
     const maxChunkSize = Math.min(packet.buffer.length - offsetBytes, bufferSize);
     const sliced = packet.buffer.slice(offsetBytes, offsetBytes + maxChunkSize);
-    console.log(`off: ${offsetBytes} | max: ${maxChunkSize} | slc: ${sliced.length}`);
+    //console.log(`off: ${offsetBytes} | max: ${maxChunkSize} | slc: ${sliced.length}`);
     return {
         buffer: sliced,
         streamSize: packet.streamSize,
