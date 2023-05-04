@@ -14,11 +14,13 @@ const dwnp = createProxyMiddleware({
     pathRewrite: (path, req) => {
         const { cid, fid } = req.params;
         return `${cid}/${fid}/blob`;
-    }
+    },
+    logger: console,
 })
 router.get('/:cid/:fid', (req, res, next) => {
     const { cid, fid } = req.params;
     if (containsOnlyNumbers(cid) && containsOnlyNumbers(fid) && cid.length === 19 && fid.length === 19) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
         next();
     } else {
         return res.status(400).send("Bad parameters");
