@@ -1,12 +1,20 @@
-import express from 'express';
-import { getStreamBufferPart } from './manager.js';
-import stream from 'stream';
-
+const express = require('express');
+const { getStreamBufferPart, formatID } = require('./manager.js');
+const stream = require('stream');
+const { ControlBandwidth } = require('./limiter.js');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
+//router.use(ControlBandwidth);
+router.get('/file11', (req, res) => {
+    res.sendFile(path.join(__dirname, '/h.html'));
+});
 
 router.get("/:cid/:fid", async function (req, res) {
-    const range = req.headers.range;
-    const { fid, cid } = req.params;
+    let range = req.headers.range;
+    let { fid, cid } = req.params;
+
+    fid = formatID(fid);
     if (cid.length !== 19 || fid.length !== 19) {
         return res.status(400).send("Ids are not valid.");
     }
@@ -14,7 +22,8 @@ router.get("/:cid/:fid", async function (req, res) {
         return res.status(400).send("No fid or cid was specified");
     }
     if (!range) {
-        return res.status(400).send("Requires Range header");
+        range = 'bytes=0-'
+        //return res.status(400).send("Requires Range header");
     }
     let canceled = false;
     req.on('close', () => {
@@ -34,14 +43,14 @@ router.get("/:cid/:fid", async function (req, res) {
         const end = start + data.length
         const contentLength = end - start;
         // i guess i dont need content type
-        // const type = req.headers['sec-fetch-dest'] === 'audio' ? 'audio/mp3' : 'video/mp4';
 
         const headers = {
             "Content-Range": `bytes ${start}-${end - 1}/${data.streamSize}`,
             "Accept-Ranges": "bytes",
             "Content-Length": contentLength,
-            // "Content-Type": type,
-            "Access-Control-Allow-Origin": "*"
+            "Content-Type": data.type,
+            "Access-Control-Allow-Origin": "*",
+            "Content-Disposition": `inline`
         };
         res.writeHead(206, headers);
         var bufferStream = new stream.PassThrough();
@@ -53,4 +62,4 @@ router.get("/:cid/:fid", async function (req, res) {
     }
 })
 
-export default router;
+module.exports = router;

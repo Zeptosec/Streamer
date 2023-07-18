@@ -1,5 +1,5 @@
-import express from 'express';
-import { createProxyMiddleware } from 'http-proxy-middleware';
+const express = require('express');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const router = express.Router();
 
@@ -19,6 +19,8 @@ const dwnp = createProxyMiddleware({
 })
 router.get('/:cid/:fid', (req, res, next) => {
     const { cid, fid } = req.params;
+    console.log(req.headers);
+    console.log(req.body);
     if (containsOnlyNumbers(cid) && containsOnlyNumbers(fid) && cid.length === 19 && fid.length === 19) {
         res.setHeader('Access-Control-Allow-Origin', '*');
         next();
@@ -27,4 +29,4 @@ router.get('/:cid/:fid', (req, res, next) => {
     }
 }, dwnp)
 
-export default router;
+module.exports = router;

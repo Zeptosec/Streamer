@@ -1,13 +1,12 @@
-import axios from "axios";
-import * as dotenv from 'dotenv';
-dotenv.config();
+const axios = require("axios");
+require('dotenv').config()
 
 // --------- CONFIG -------------
 const maxStreamInfoSize = process.env.MAX_STREAM_INFO_SIZE ? process.env.MAX_STREAM_INFO_SIZE : 20; // max amount of streamsInfo. This does not take much space so this can be fairly high.
-const maxQueueSize = process.env.MAX_QUEUE_SIZE ? process.env.MAX_QUEUE_SIZE : 6; // queue size this is expensive. one item in queue is 8MB. Be careful not to run out of memory.
+const maxQueueSize = process.env.MAX_QUEUE_SIZE ? process.env.MAX_QUEUE_SIZE : 6; // queue size this is expensive. one item in queue is HOLD_BUFFER_SIZE MB. Be careful not to run out of memory.
 const buffSize = process.env.HOLD_BUFFER_SIZE ? process.env.HOLD_BUFFER_SIZE : 6.25 * 1024 ** 2;
-export const sendBufferSize = process.env.SEND_BUFFER_SIZE ? process.env.SEND_BUFFER_SIZE : 1.5625 * 1024 ** 2;
-const linkStart = process.env.LINKSTART;
+const sendBufferSize = process.env.SEND_BUFFER_SIZE ? process.env.SEND_BUFFER_SIZE : 1.5625 * 1024 ** 2;
+const linkStart = process.env.LINKSTART ? process.env.LINKSTART : "https://cdn.discordapp.com/attachments";
 // ------------------------------
 const streamsInfo = new Map();
 const oldChunkSize = 8 * 1024 ** 2;
@@ -20,7 +19,7 @@ async function getStreamInfo(fid, cid) {
             const res = await axios.get(`${linkStart}/${cid}/${fid}/blob`);
             if (!res.data.chunks || !res.data.size) return null;
             if (!res.data.chunkSize) res.data.chunkSize = oldChunkSize;
-
+            res.data.type = getTypeFromName(res.data.name);
             streamsInfo.set(fid, res.data);
             if (streamsInfo.size > maxStreamInfoSize) {
                 streamsInfo.delete(streamsInfo.keys().next().value);
@@ -33,7 +32,26 @@ async function getStreamInfo(fid, cid) {
     }
 }
 
-export async function getStreamBufferPart(fid, cid, start, bufferSize=sendBufferSize) {
+function getTypeFromName(name) {
+    const parts = name.split('.');
+    if (parts.length === 0) {
+        return null;
+    }
+    const ext = parts[parts.length - 1].toLowerCase();
+    switch (ext) {
+        case 'mp3':
+        case 'wav':
+            return 'audio/mpeg';
+        case 'mp4':
+        case 'avi':
+        case 'mkv':
+            return 'video/mp4';
+        default:
+            return null;
+    }
+}
+
+async function getStreamBufferPart(fid, cid, start, bufferSize = sendBufferSize) {
     const packet = await getStreamBuffer(fid, cid, start);
     //console.log(packet)
     if (!packet) return null;
@@ -44,11 +62,13 @@ export async function getStreamBufferPart(fid, cid, start, bufferSize=sendBuffer
     return {
         buffer: sliced,
         streamSize: packet.streamSize,
-        length: sliced.length
+        length: sliced.length,
+        type: packet.type,
+        name: packet.name
     };
 }
 
-export async function getStreamBuffer(fid, cid, start) {
+async function getStreamBuffer(fid, cid, start) {
     const streamInfo = await getStreamInfo(fid, cid);
     if (streamInfo === null || start < 0 || start > streamInfo.size) return null;
     AddToQueue(fid, cid, streamInfo, start);
@@ -57,11 +77,12 @@ export async function getStreamBuffer(fid, cid, start) {
     }
     const item = await getFromQueue(fid, start);
     if (!item) return null;
-
     return {
         buffer: item.buffer,
         start: item.start,
-        streamSize: streamInfo.size
+        streamSize: streamInfo.size,
+        type: streamInfo.type ?? 'other',
+        name: streamInfo.name
     };
 }
 
@@ -120,4 +141,27 @@ async function getFromQueue(fid, start) {
     if (!item) return null;
     const buffer = await item.buffer;
     return { buffer, start: item.start };
+}
+
+function formatID(id) {
+    const ind = id.lastIndexOf('.');
+    let reg = /^\d+$/;
+    if (ind !== -1) {
+        const idPart = id.slice(0, ind);
+        if (reg.test(idPart)) {
+            return idPart;
+        }
+        return null;
+    }
+    if (reg.test(id)) {
+        return id;
+    }
+    return null;
+}
+
+module.exports = {
+    getStreamBuffer,
+    getStreamBufferPart,
+    sendBufferSize,
+    formatID
 }
