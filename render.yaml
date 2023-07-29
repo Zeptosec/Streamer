@@ -1,11 +1,9 @@
 services:
   type: web
   name: streamer
-  runtime: docker
+  runtime: node
   repo: https://github.com/Zeptosec/Streamer.git
   region: oregon
   plan: free
   branch: master
-  rootDir: /
-  dockerCommand: npm start
   healthCheckPath: /
