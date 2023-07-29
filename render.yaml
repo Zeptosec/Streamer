@@ -1,9 +1,9 @@
 services:
-  type: web
-  name: streamer
-  runtime: node
-  repo: https://github.com/Zeptosec/Streamer.git
-  region: oregon
-  plan: free
-  branch: master
-  healthCheckPath: /
+  - type: web
+    name: streamer
+    runtime: node
+    repo: https://github.com/Zeptosec/Streamer.git
+    region: oregon
+    plan: free
+    branch: master
+    healthCheckPath: /
