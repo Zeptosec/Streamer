@@ -7,4 +7,4 @@ services:
     plan: free
     branch: master
     healthCheckPath: /
-    startCommand: npm start
+    startCommand: npm install && npm start
