@@ -19,8 +19,6 @@ const dwnp = createProxyMiddleware({
 })
 router.get('/:cid/:fid', (req, res, next) => {
     const { cid, fid } = req.params;
-    console.log(req.headers);
-    console.log(req.body);
     if (containsOnlyNumbers(cid) && containsOnlyNumbers(fid) && cid.length === 19 && fid.length === 19) {
         res.setHeader('Access-Control-Allow-Origin', '*');
         next();

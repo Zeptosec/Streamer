@@ -1,9 +1,8 @@
 const express = require('express');
 const { getStreamBufferPart, formatID } = require('./manager.js');
 const stream = require('stream');
-const { ControlBandwidth } = require('./limiter.js');
+// const { ControlBandwidth } = require('./limiter.js');
 const router = express.Router();
-const fs = require('fs');
 const path = require('path');
 //router.use(ControlBandwidth);
 router.get('/file11', (req, res) => {
@@ -42,7 +41,6 @@ router.get("/:cid/:fid", async function (req, res) {
         }
         const end = start + data.length
         const contentLength = end - start;
-        // i guess i dont need content type
 
         const headers = {
             "Content-Range": `bytes ${start}-${end - 1}/${data.streamSize}`,
