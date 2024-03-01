@@ -1,4 +1,5 @@
 const express = require('express');
+// Require the necessary discord.js classes
 const streamRoutes = require('./streaming.js');
 const downRoutes = require('./downloading.js');
 var cors = require('cors');
@@ -10,8 +11,6 @@ app.use(cors({
 app.use('/stream', streamRoutes)
 app.use('/down', downRoutes)
 
-
-
 const timestamp = new Date();
 app.get("/", function (req, res) {
     const timediff = new Date().getTime() - timestamp.getTime();
@@ -19,7 +18,7 @@ app.get("/", function (req, res) {
     res.status(200).send(`Alive for: ${convertMsToTime(timediff)}`);
 })
 
-
 app.listen(process.env.PORT || 8000, function () {
+    // Log in to Discord with your client's token
     console.log("Listening on " + (process.env.PORT || 8000));
 })

@@ -1,6 +1,6 @@
 {
   "name": "streamer",
-  "version": "1.2.2",
+  "version": "1.2.4",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -17,7 +17,8 @@
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "http-proxy-middleware": "^2.0.6",
-    "stream": "^0.0.2"
+    "stream": "^0.0.2",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "typescript": "^4.9.5"

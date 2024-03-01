@@ -1,5 +1,6 @@
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
+const { getUpdatedLinks } = require('./manager');
 
 const router = express.Router();
 
@@ -11,9 +12,12 @@ const dwnp = createProxyMiddleware({
     changeOrigin: true,
     ws: false,
     target: 'https://cdn.discordapp.com/attachments/',
-    pathRewrite: (path, req) => {
+    pathRewrite: async (path, req) => {
         const { cid, fid } = req.params;
-        return `${cid}/${fid}/blob`;
+        const updatedLink = await getUpdatedLinks([`https://cdn.discordapp.com/attachments/${cid}/${fid}/blob`])
+        const ind = updatedLink[0].indexOf('?');
+        if (ind === -1) throw new Error("Failed to get link hmac");
+        return `${cid}/${fid}/blob?${updatedLink[0].slice(ind + 1)}`;
     },
     logger: console,
 })
