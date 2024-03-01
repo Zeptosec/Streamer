@@ -3,7 +3,7 @@ streams chunked audio and video by chunking it even more. Useful when data is no
 # How to use it?
 clone project with, install dependencies and run it. Rename file `.env.example` to `.env` to make custom config, or just edit the source files.
 
-This project is kind of broken, but it's in somewhat working state. Discord finally added hmac hashing, I could not find any docs on how to update urls, so I found my own solution. I don't know how long it will work or how reliable it is, but for now it works. 
+This project is kind of broken, but it's in somewhat working state. Discord finally added hmac to the attachments, I could not find any docs on how to update those urls, so I found my own solution. I don't know how long it will work or how reliable it is, but for now it works. 
 
 You need to add your discord (preferably your temp account that won't ever be used) Authorization token in the `.env` file
 ```
