@@ -21,7 +21,38 @@ const infoSchema = z.object({
     chunkSize: z.number().positive()
 })
 
+// let cachedLinks = new Map();
+// function getCachedAndNew(links) {
+//     let updatedLinks = [];
+//     let linksToUpdate = [];
+//     const now = new Date().getTime();
+//     for (let i = 0; i < links.length; i++) {
+//         const cachedLink = cachedLinks.get(l);
+//         if (cachedLink === undefined || cachedLink.time + 22 * 3600 * 1000 < now) {
+//             linksToUpdate.push({
+//                 time: now,
+//                 originalLink: l,
+//                 index: i
+//             });
+//         } else {
+//             updatedLinks[i] = cachedLink;
+//         }
+//     }
+//     return {
+//         updatedLinks,
+//         linksToUpdate
+//     }
+// }
+
+
 async function getUpdatedLinks(links) {
+    // if (links.length > maxAmountOfUpdatedLinks) throw new Error("Too many links at once!");
+    // const rez = getCachedAndNew(links);
+    // if (rez.linksToUpdate.length === 0) {
+    //     console.log(`All ${links.length} fetched from the cache!`)
+    //     return rez.updatedLinks;
+    // }
+
     const rs = await axios.post('https://discord.com/api/v9/attachments/refresh-urls', {
         "attachment_urls": links
     }, {
@@ -30,7 +61,13 @@ async function getUpdatedLinks(links) {
             'Authorization': USERAUTHTOKEN
         }
     })
-    console.log(`refreshed: ${links.length} links`);
+
+    // for (let i = 0; i < rs.data.refreshed_urls.length; i++) {
+    //     const refreshedUrl = rs.data.refreshed_urls[i].refreshed;
+    //     rez.updatedLinks[rez.linksToUpdate[i].index] = refreshedUrl;
+    //     cachedLinks.set(rez.linksToUpdate[i].originalLink, refreshedUrl);
+    // }
+    // console.log(`refreshed: ${rez.linksToUpdate.length} links`);
     return rs.data.refreshed_urls.map(w => w.refreshed);
 }
 
@@ -46,12 +83,10 @@ async function getStreamInfo(fid, cid) {
             if (!res.data.chunkSize) res.data.chunkSize = oldChunkSize;
             res.data.type = getTypeFromName(res.data.name);
             let infoData = infoSchema.parse(res.data);
-            await new Promise(r => setTimeout(r, 2000));
-            console.log(`Found file '${infoData.name}', size: ${infoData.size} B, amount of chunks: ${infoData.chunks.length}, chunkSize: ${infoData.chunkSize}`);
-            console.log("Updating chunk links");
-            const updatedLinks = await getUpdatedLinks(infoData.chunks.map(w => `${linkStart}/${cid}/${w}/blob`));
+            // const updatedLinks = await getUpdatedLinks(infoData.chunks.map(w => `${linkStart}/${cid}/${w}/blob`));
             // assume that the order is correct
-            infoData.chunks = updatedLinks;
+            // infoData.chunks = updatedLinks;
+            infoData.chunks = infoData.chunks.map(w => ({ orig: w }));
             streamsInfo.set(fid, infoData);
             if (streamsInfo.size > maxStreamInfoSize) {
                 streamsInfo.delete(streamsInfo.keys().next().value);
@@ -102,13 +137,13 @@ async function getStreamBufferPart(fid, cid, start, bufferSize = sendBufferSize)
 async function getStreamBuffer(fid, cid, start) {
     const streamInfo = await getStreamInfo(fid, cid);
     if (streamInfo === null || start < 0 || start > streamInfo.size) return null;
-    console.log(start);
+    // console.log(start);
     AddToQueue(fid, cid, streamInfo, start);
     if (start + buffSize < streamInfo.size) { // buffer up more stream
         AddToQueue(fid, cid, streamInfo, start + buffSize);
     }
     const item = await getFromQueue(fid, start);
-    console.log(item);
+    // console.log(item);
     if (!item) return null;
     return {
         buffer: item.buffer,
@@ -117,6 +152,37 @@ async function getStreamBuffer(fid, cid, start) {
         type: streamInfo.type ?? 'other',
         name: streamInfo.name
     };
+}
+
+async function getUrl(streamInfo, index) {
+    const now = new Date().getTime();
+    if (streamInfo.chunks[index].refreshed === undefined || streamInfo.chunks[index].time + 22 * 3600 * 1000 < now) {
+        let linksToUpdate = [{
+            ind: index,
+            link: streamInfo.chunks[index].orig
+        }];
+        const now = new Date().getTime();
+        for (let i = index + 1; i < Math.min(index + 35, streamInfo.chunks.length); i++) {
+            const chunk = streamInfo.chunks[i];
+            if (chunk.refreshed === undefined || chunk.time + 22 * 3600 * 1000 < now) {
+                linksToUpdate.push({
+                    ind: i,
+                    link: streamInfo.chunks[i].orig
+                })
+            }
+        }
+
+        const refreshedLinks = await getUpdatedLinks(linksToUpdate.map(w => `${linkStart}/${streamInfo.channel_id}/${w.link}/blob`))
+        for (let i = 0; i < linksToUpdate.length; i++) {
+            const chunk = streamInfo.chunks[linksToUpdate[i].ind];
+            chunk.refreshed = refreshedLinks[i];
+            chunk.time = now;
+        }
+        console.log(`refreshed ${refreshedLinks.length} links`);
+        return streamInfo.chunks[index].refreshed;
+    } else {
+        return streamInfo.chunks[index].refreshed;
+    }
 }
 
 async function getDownloadBuffer(cid, streamInfo, start, controller) {
@@ -130,21 +196,23 @@ async function getDownloadBuffer(cid, streamInfo, start, controller) {
         diff = endByte - streamInfo.chunkSize;
         endByte -= diff;
     }
-    
-    console.log(`${chunkIndex} | start: ${start}; max: ${streamInfo.size}; diff: ${diff}; abuff: ${allowedBuffSize}; ${markerAtChunk} - ${endByte}`)
+
+    // console.log(`${chunkIndex} | start: ${start}; max: ${streamInfo.size}; diff: ${diff}; abuff: ${allowedBuffSize}; ${markerAtChunk} - ${endByte}`)
+    const chunkUrl1 = await getUrl(streamInfo, chunkIndex);
     arr.push(
-        axios.get(streamInfo.chunks[chunkIndex], {
+        axios.get(chunkUrl1, {
             responseType: 'arraybuffer',
             signal: controller.signal,
             headers: {
                 Range: `bytes=${markerAtChunk}-${endByte - 1}`
             }
-        }).then(rs => rs.data).catch(err => { console.log("AXIOS ERROR 1",start, endByte, streamInfo.chunkSize, chunkIndex, err.stack, 1); return undefined; })
+        }).then(rs => rs.data).catch(err => { console.log("AXIOS ERROR 1", start, endByte, streamInfo.chunkSize, chunkIndex, err.stack, 1); return undefined; })
     )
 
     if (chunkIndex + 1 < streamInfo.chunks.length && diff > 0) {
+        const chunkUrl2 = await getUrl(streamInfo, chunkIndex + 1);
         arr.push(
-            axios.get(streamInfo.chunks[chunkIndex + 1], {
+            axios.get(chunkUrl2, {
                 responseType: 'arraybuffer',
                 signal: controller.signal,
                 headers: {
