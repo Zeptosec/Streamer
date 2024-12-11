@@ -81,8 +81,10 @@ async function getStreamInfo(fid, cid) {
             const res = await axios.get(updatedMainLink[0]);
             if (!res.data.chunks || !res.data.size) return null;
             if (!res.data.chunkSize) res.data.chunkSize = oldChunkSize;
-            res.data.type = getTypeFromName(res.data.name);
+            if (!res.data.channel_id) res.data.channel_id = cid;
             let infoData = infoSchema.parse(res.data);
+            infoData.type = getTypeFromName(res.data.name);
+            console.log(infoData.chunkSize);
             // const updatedLinks = await getUpdatedLinks(infoData.chunks.map(w => `${linkStart}/${cid}/${w}/blob`));
             // assume that the order is correct
             // infoData.chunks = updatedLinks;
@@ -105,14 +107,16 @@ function getTypeFromName(name) {
         return null;
     }
     const ext = parts[parts.length - 1].toLowerCase();
+    console.log(ext);
     switch (ext) {
         case 'mp3':
         case 'wav':
             return 'audio/mpeg';
         case 'mp4':
+            return 'video/mp4';
         case 'avi':
         case 'mkv':
-            return 'video/mp4';
+            return 'video/webm';
         default:
             return null;
     }
