@@ -8,19 +8,6 @@ function containsOnlyNumbers(str) {
     return /^\d+$/.test(str);
 }
 
-const dwnp = createProxyMiddleware({
-    changeOrigin: true,
-    ws: false,
-    target: 'https://cdn.discordapp.com/attachments/',
-    pathRewrite: async (path, req) => {
-        const { cid, fid } = req.params;
-        const updatedLink = await getUpdatedLinks([`https://cdn.discordapp.com/attachments/${cid}/${fid}/blob`])
-        const ind = updatedLink[0].indexOf('?');
-        if (ind === -1) throw new Error("Failed to get link hmac");
-        return `${cid}/${fid}/blob?${updatedLink[0].slice(ind + 1)}`;
-    },
-    logger: console,
-})
 router.get('/:cid/:fid', async (req, res, next) => {
     const { cid, fid } = req.params;
     console.log(cid, fid);
