@@ -1,14 +1,12 @@
 const express = require('express');
 const { getStreamBufferPart, formatID } = require('./manager.js');
 const stream = require('stream');
-// const { ControlBandwidth } = require('./limiter.js');
 const router = express.Router();
-//router.use(ControlBandwidth);
 
 router.get("/:cid/:fid", async function (req, res) {
     let range = req.headers.range;
     let { fid, cid } = req.params;
-
+    console.log(cid, fid, range);
     fid = formatID(fid);
     if (!cid || !fid) {
         return res.status(400).send("No fid or cid was specified");
@@ -37,7 +35,6 @@ router.get("/:cid/:fid", async function (req, res) {
         }
         const end = start + data.length
         const contentLength = end - start;
-
         const headers = {
             "Content-Range": `bytes ${start}-${end - 1}/${data.streamSize}`,
             "Accept-Ranges": "bytes",
@@ -46,6 +43,7 @@ router.get("/:cid/:fid", async function (req, res) {
             "Access-Control-Allow-Origin": "*",
             "Content-Disposition": `inline`
         };
+        // console.log(headers);
         res.writeHead(206, headers);
         var bufferStream = new stream.PassThrough();
         bufferStream.end(data.buffer);
