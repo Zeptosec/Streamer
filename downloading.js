@@ -1,5 +1,4 @@
 const express = require('express');
-const { createProxyMiddleware } = require('http-proxy-middleware');
 const { getUpdatedLinks } = require('./manager');
 
 const router = express.Router();
@@ -11,7 +10,7 @@ function containsOnlyNumbers(str) {
 router.get('/:cid/:fid', async (req, res, next) => {
     const { cid, fid } = req.params;
     console.log(cid, fid);
-    if (containsOnlyNumbers(cid) && containsOnlyNumbers(fid) && cid.length === 19 && fid.length === 19) {
+    if (containsOnlyNumbers(cid) && containsOnlyNumbers(fid) && cid.length >= 18 && cid.length <= 22 && fid.length >= 18 && cid.length <= 22) {
         res.setHeader('Access-Control-Allow-Origin', '*');
         const updatedLink = await getUpdatedLinks([`https://cdn.discordapp.com/attachments/${cid}/${fid}/blob`])
         const ind = updatedLink[0].indexOf('?');
